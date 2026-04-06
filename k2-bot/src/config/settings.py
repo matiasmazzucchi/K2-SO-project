@@ -46,6 +46,13 @@ class Settings(BaseSettings):
     # Calendario
     calendar_id: str = "matiasmazzucchi1@gmail.com"
 
+    # Gmail Configuration
+    gmail_credentials_path: str = "credentials.json"
+    gmail_token_path: str = "token.json"
+
+    # Google Cloud Service Account
+    google_application_credentials: str = "path/to/service-account-key.json"
+
     # Cloud Run
     port: int = 8080
     debug: bool = False
@@ -53,6 +60,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "allow"
 
 
 @lru_cache()

@@ -2,7 +2,7 @@
 Agente de supermercado para comparación de precios.
 Maneja la base de datos de precios en Google Sheets.
 """
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import datetime
 import pytz
 

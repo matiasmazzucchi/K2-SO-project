@@ -18,9 +18,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Importar módulos del bot
-from k2_bot.src.config import get_settings
-from k2_bot.src.handlers import TelegramWebhookHandler
-from k2_bot.src.auth import extract_user_info, authorize_request, UserAuthorizationError
+import sys
+from pathlib import Path
+
+# Agregar k2-bot al path de Python
+sys.path.insert(0, str(Path(__file__).parent / "k2-bot"))
+
+from src.config import get_settings
+from src.handlers import TelegramWebhookHandler
+from src.auth import extract_user_info, authorize_request, UserAuthorizationError
 
 
 # Variables globales
@@ -132,7 +138,7 @@ async def bot_status():
     try:
         # Obtener estados de los agentes (esto requiere un usuario válido)
         # Por ahora retornamos estado general
-        from k2_bot.src.agents.orchestrator import K2Orchestrator
+        from src.agents.orchestrator import K2Orchestrator
         
         orchestrator = K2Orchestrator(
             project_id=settings.project_id,
