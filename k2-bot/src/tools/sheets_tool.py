@@ -63,6 +63,21 @@ class GoogleSheetsClient:
             self._service = build('sheets', 'v4', credentials=self._credentials)
         return self._service
 
+    def _get_sheet_name(self, spreadsheet_id: str, sheet_gid: int) -> str:
+        """
+        Obtiene el nombre de una hoja a partir de su GID.
+        """
+        service = self._get_service()
+        spreadsheet = service.spreadsheets().get(
+            spreadsheetId=spreadsheet_id
+        ).execute()
+
+        for sheet in spreadsheet.get('sheets', []):
+            if sheet['properties']['sheetId'] == sheet_gid:
+                return sheet['properties']['title']
+
+        raise ValueError(f"No se encontró la hoja con GID {sheet_gid}")
+
     def is_authenticated(self) -> bool:
         """Verifica si el cliente está autenticado."""
         try:
@@ -89,13 +104,14 @@ class GoogleSheetsClient:
             Lista de diccionarios con los datos
         """
         service = self._get_service()
+        sheet_name = self._get_sheet_name(spreadsheet_id, sheet_gid)
 
         try:
             if range_name:
-                range_to_read = range_name
+                range_to_read = f"{sheet_name}!{range_name}"
             else:
-                # Leer toda la hoja
-                range_to_read = None
+                # Leer toda la hoja (basado en el nombre)
+                range_to_read = sheet_name
 
             result = service.spreadsheets().values().get(
                 spreadsheetId=spreadsheet_id,
@@ -144,15 +160,18 @@ class GoogleSheetsClient:
             Resultado de la operación
         """
         service = self._get_service()
+        sheet_name = self._get_sheet_name(spreadsheet_id, sheet_gid)
 
         try:
             # Obtener headers existentes
             if not range_name:
-                range_name = "A1:Z1"
+                request_range = f"{sheet_name}!A1:Z1"
+            else:
+                request_range = f"{sheet_name}!{range_name}"
 
             headers_result = service.spreadsheets().values().get(
                 spreadsheetId=spreadsheet_id,
-                range=range_name
+                range=request_range
             ).execute()
 
             headers = headers_result.get('values', [[]])[0]
@@ -167,7 +186,7 @@ class GoogleSheetsClient:
 
             result = service.spreadsheets().values().append(
                 spreadsheetId=spreadsheet_id,
-                range=range_name,
+                range=request_range,
                 valueInputOption='USER_ENTERED',
                 body=body
             ).execute()
@@ -203,15 +222,18 @@ class GoogleSheetsClient:
             Resultado de la operación
         """
         service = self._get_service()
+        sheet_name = self._get_sheet_name(spreadsheet_id, sheet_gid)
 
         try:
             # Obtener headers
             if not range_name:
-                range_name = "A1:Z1"
+                request_range = f"{sheet_name}!A1:Z1"
+            else:
+                request_range = f"{sheet_name}!{range_name}"
 
             headers_result = service.spreadsheets().values().get(
                 spreadsheetId=spreadsheet_id,
-                range=range_name
+                range=request_range
             ).execute()
 
             headers = headers_result.get('values', [[]])[0]
@@ -220,7 +242,7 @@ class GoogleSheetsClient:
             row_values = [data.get(header, "") for header in headers]
 
             # Actualizar fila específica
-            update_range = f"A{row_index}:{chr(65 + len(headers))}{row_index}"
+            update_range = f"{sheet_name}!A{row_index}:{chr(65 + len(headers))}{row_index}"
 
             body = {
                 'values': [row_values]
