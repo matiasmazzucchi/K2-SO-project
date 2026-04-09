@@ -262,6 +262,31 @@ def create_financial_tools(agent: FinancialAgent) -> List:
         return result
 
     @tool
+    async def nuevo_egreso(categoria: str, monto: float, motivo: str) -> str:
+        """
+        Registra un nuevo egreso en la hoja de cálculo.
+        Úsalo cuando el usuario quiera agendar un gasto.
+
+        Args:
+            categoria: Categoría del gasto
+            monto: Monto del gasto
+            motivo: Descripción del gasto
+        """
+        result = await agent.add_expense(categoria, monto, motivo)
+        if result["success"]:
+            return f"Egreso registrado: {monto} en {categoria} - {motivo}"
+        return "Error al registrar el egreso."
+
+    @tool
+    async def categorias_egresos() -> str:
+        """
+        Obtiene las categorías disponibles para egresos.
+        Úsalo para validar categorías antes de registrar.
+        """
+        categories = await agent.get_categories()
+        return f"Categorías disponibles: {', '.join(categories)}"
+
+    @tool
     async def nuevo_ingreso(categoria: str, monto: float, motivo: str) -> str:
         """
         Registra un nuevo ingreso en la hoja de cálculo.
