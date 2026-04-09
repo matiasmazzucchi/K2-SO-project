@@ -8,6 +8,7 @@ import asyncio
 from ..config import get_settings, AUTHORIZED_USER_NAMES
 from ..memory import memory_manager
 from ..agents.orchestrator import K2Orchestrator
+from ..utils.multimodal import multimodal_service
 
 
 class MessageRouter:
@@ -65,10 +66,10 @@ class MessageRouter:
         # Procesar según el tipo
         if message_type == "text":
             return await self._process_text(
-                message_data.get("text", ""),
-                orchestrator,
-                memory,
-                user_name
+                text=message_data.get("text", ""),
+                orchestrator=orchestrator,
+                memory=memory,
+                user_name=user_name
             )
         elif message_type == "voice":
             return await self._process_voice(
@@ -113,16 +114,20 @@ class MessageRouter:
         Returns:
             Respuesta del agente
         """
-        # Añadir mensaje a la memoria
+        # 1. Obtener historial previo (sin el mensaje actual)
+        chat_history = memory.get_messages()
+
+        # 2. Añadir mensaje actual a la memoria persistente
         memory.add_message("user", text)
 
-        # Procesar con el agente
+        # 3. Procesar con el agente (pasando el historial histórico)
         response = await orchestrator.process_message(
             user_input=text,
+            chat_history=chat_history,
             context={"user_name": user_name}
         )
 
-        # Guardar respuesta en memoria
+        # 4. Guardar respuesta en memoria y persistir
         memory.add_message("assistant", response)
         memory.save()
 
@@ -137,19 +142,42 @@ class MessageRouter:
     ) -> str:
         """
         Procesa un mensaje de voz.
-
-        Args:
-            message_data: Datos del mensaje de Telegram
-            orchestrator: Orquestador K2
-            memory: Memoria de conversación
-            user_name: Nombre del usuario
-
-        Returns:
-            Respuesta del agente
         """
-        # TODO: Implementar transcripción con Whisper
-        # Por ahora, retornar mensaje placeholder
-        return "Recibí tu audio. Pronto podré transcribirlo y procesarlo."
+        from .telegram import telegram_handler
+        
+        voice_data = message_data.get("voice", {})
+        file_id = voice_data.get("file_id")
+        
+        if not file_id:
+            return "No pude obtener el archivo de voz."
+            
+        try:
+            # 1. Descargar audio
+            audio_bytes = await telegram_handler.download_file(file_id)
+            
+            # 2. Transcribir con Whisper
+            transcribed_text = await multimodal_service.transcribe_voice(audio_bytes)
+            
+            if not transcribed_text:
+                return "No pude entender lo que dijiste en el audio, Matz. ¿Podrías repetirlo?"
+            
+            # 3. Procesar como texto con el contexto de audio
+            chat_history = memory.get_messages()
+            memory.add_message("user", f"[Audio]: {transcribed_text}")
+            
+            response = await orchestrator.process_message(
+                user_input=transcribed_text,
+                chat_history=chat_history,
+                context={"user_name": user_name, "transcribed_text": transcribed_text}
+            )
+            
+            memory.add_message("assistant", response)
+            memory.save()
+            
+            return response
+            
+        except Exception as e:
+            return f"Tuve un error procesando tu audio: {str(e)}"
 
     async def _process_photo(
         self,
@@ -160,19 +188,41 @@ class MessageRouter:
     ) -> str:
         """
         Procesa una imagen.
-
-        Args:
-            message_data: Datos del mensaje de Telegram
-            orchestrator: Orquestador K2
-            memory: Memoria de conversación
-            user_name: Nombre del usuario
-
-        Returns:
-            Respuesta del agente
         """
-        # TODO: Implementar análisis con GPT-4o Vision
-        # Por ahora, retornar mensaje placeholder
-        return "Recibí tu imagen. Pronto podré analizarla."
+        from .telegram import telegram_handler
+        
+        # Telegram manda un array de fotos de distintos tamaños, la última es la más grande
+        photos = message_data.get("photo", [])
+        if not photos:
+            return "No recibí ninguna foto."
+            
+        file_id = photos[-1].get("file_id")
+        caption = message_data.get("caption", "Analiza esta imagen.")
+        
+        try:
+            # 1. Descargar foto
+            image_bytes = await telegram_handler.download_file(file_id)
+            
+            # 2. Analizar con GPT-4o Vision
+            image_description = await multimodal_service.analyze_image(image_bytes, prompt=caption)
+            
+            # 3. Procesar con el orquestador
+            chat_history = memory.get_messages()
+            memory.add_message("user", f"[Foto]: {caption}")
+            
+            response = await orchestrator.process_message(
+                user_input=caption,
+                chat_history=chat_history,
+                context={"user_name": user_name, "image_description": image_description}
+            )
+            
+            memory.add_message("assistant", response)
+            memory.save()
+            
+            return response
+            
+        except Exception as e:
+            return f"Hubo un fallo en mis sensores ópticos al procesar la imagen: {str(e)}"
 
     async def _process_pdf(
         self,

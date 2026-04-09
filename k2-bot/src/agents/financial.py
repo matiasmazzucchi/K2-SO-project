@@ -156,6 +156,60 @@ class FinancialAgent:
 
         return rows
 
+    async def add_income(
+        self,
+        category: str,
+        amount: float,
+        description: str
+    ) -> Dict[str, Any]:
+        """
+        Registra un nuevo ingreso.
+
+        Args:
+            category: Categoría del ingreso
+            amount: Monto
+            description: Descripción
+
+        Returns:
+            Diccionario con el resultado
+        """
+        tz = pytz.timezone(self.settings.default_timezone)
+        now = datetime.now(tz)
+
+        sheet_id = self.settings.sheets_ecosistema_mazzucchi
+        sheet_gid = SHEET_NAMES.get("ingresos", 0) # Placeholder si no existe
+
+        row_data = {
+            "fecha": now.strftime("%d/%m/%Y"),
+            "concepto": description,
+            "categoria": category,
+            "monto": str(amount)
+        }
+
+        result = await self.sheets_client.append_row(
+            spreadsheet_id=sheet_id,
+            sheet_gid=sheet_gid,
+            data=row_data
+        )
+
+        return {
+            "success": result.get("success", False),
+            "income": row_data
+        }
+
+    async def get_income(self) -> List[Dict[str, Any]]:
+        """
+        Obtiene los ingresos registrados.
+        """
+        sheet_id = self.settings.sheets_ecosistema_mazzucchi
+        sheet_gid = SHEET_NAMES.get("ingresos", 0)
+
+        rows = await self.sheets_client.get_rows(
+            spreadsheet_id=sheet_id,
+            sheet_gid=sheet_gid
+        )
+        return rows
+
 
 def create_financial_tools(agent: FinancialAgent) -> List:
     """
@@ -208,35 +262,33 @@ def create_financial_tools(agent: FinancialAgent) -> List:
         return result
 
     @tool
-    async def nuevo_egreso(categoria: str, monto: float, motivo: str) -> str:
+    async def nuevo_ingreso(categoria: str, monto: float, motivo: str) -> str:
         """
-        Registra un nuevo egreso en la hoja de cálculo.
-        Úsalo cuando el usuario quiera agendar un gasto.
+        Registra un nuevo ingreso en la hoja de cálculo.
+        Úsalo cuando el usuario cobre dinero o reciba un pago.
 
         Args:
-            categoria: Categoría del gasto
-            monto: Monto del gasto
-            motivo: Descripción del gasto
-
-        Returns:
-            Confirmación del registro
+            categoria: Categoría del ingreso
+            monto: Monto del ingreso
+            motivo: Descripción o concepto
         """
-        result = await agent.add_expense(categoria, monto, motivo)
-
+        result = await agent.add_income(categoria, monto, motivo)
         if result["success"]:
-            return f"Egreso registrado: {monto} en {categoria} - {motivo}"
-        return "Error al registrar el egreso."
+            return f"Ingreso registrado: {monto} en {categoria} - {motivo}. ¡Excelente, Matz! Más créditos para el Imperio."
+        return "Error al registrar el ingreso."
 
     @tool
-    async def categorias_egresos() -> str:
+    async def ver_ingresos() -> str:
         """
-        Obtiene las categorías disponibles para egresos.
-        Úsalo para validar categorías antes de registrar.
-
-        Returns:
-            Lista de categorías disponibles
+        Consulta los últimos ingresos registrados.
         """
-        categories = await agent.get_categories()
-        return f"Categorías disponibles: {', '.join(categories)}"
+        incomes = await agent.get_income()
+        if not incomes:
+            return "No hay ingresos registrados recientemente."
+            
+        result = "Últimos ingresos registrados:\n"
+        for inc in incomes[:10]:
+            result += f"- {inc.get('fecha', 'N/A')}: {inc.get('monto', 'N/A')} - {inc.get('concepto', 'N/A')}\n"
+        return result
 
-    return [ver_egresos, ver_egresos_fijos, nuevo_egreso, categorias_egresos]
+    return [ver_egresos, ver_egresos_fijos, nuevo_egreso, categorias_egresos, nuevo_ingreso, ver_ingresos]
