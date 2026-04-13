@@ -201,7 +201,10 @@ def create_calendar_tools(agent: CalendarAgent) -> List:
                 description=descripcion
             )
 
-            return f"Evento creado: {titulo} el {fecha} a las {hora}"
+            if event.get("success", False):
+                return f"Evento creado: {titulo} el {fecha} a las {hora}"
+            else:
+                return f"Error al crear evento: No se pudo escribir en el calendario. {event.get('error', '')}"
         except Exception as e:
             return f"Error al crear evento: {str(e)}"
 

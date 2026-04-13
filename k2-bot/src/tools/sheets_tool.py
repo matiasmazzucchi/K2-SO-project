@@ -3,12 +3,15 @@ Cliente de Google Sheets para operaciones con hojas de cálculo.
 Reemplaza los nodos de N8N de Google Sheets.
 """
 import os
+import logging
 from typing import List, Dict, Any, Optional
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from ..config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class GoogleSheetsClient:
@@ -34,25 +37,40 @@ class GoogleSheetsClient:
     def _get_credentials(self):
         """
         Obtiene las credenciales de autenticación.
-
+        
         Soporta:
-        1. Service Account (recomendado para producción)
-        2. OAuth2 (para uso interactivo)
+        1. Service Account (vía GOOGLE_APPLICATION_CREDENTIALS)
+        2. Application Default Credentials (ADC - para Cloud Run)
         """
-        # Intentar cargar Service Account
+        # 1. Intentar cargar Service Account desde archivo
         credentials_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-
+        
         if credentials_path and os.path.exists(credentials_path):
-            self._credentials = service_account.Credentials.from_service_account_file(
-                credentials_path,
+            try:
+                self._credentials = service_account.Credentials.from_service_account_file(
+                    credentials_path,
+                    scopes=['https://www.googleapis.com/auth/spreadsheets']
+                )
+                logger.info(f"✅ Usando service account desde: {credentials_path}")
+                return self._credentials
+            except Exception as e:
+                logger.warning(f"⚠️ Error cargando service account desde archivo: {e}")
+
+        # 2. Intentar Application Default Credentials (ADC)
+        try:
+            import google.auth
+            credentials, project = google.auth.default(
                 scopes=['https://www.googleapis.com/auth/spreadsheets']
             )
+            self._credentials = credentials
+            logger.info("✅ Usando Application Default Credentials (ADC)")
             return self._credentials
+        except Exception as e:
+            logger.error(f"❌ Error al obtener Application Default Credentials: {e}")
 
-        # Si no hay Service Account, usar OAuth
-        # TODO: Implementar flujo OAuth2 para autenticación interactiva
         raise ValueError(
-            "No se encontraron credenciales. Configure GOOGLE_APPLICATION_CREDENTIALS"
+            "No se encontraron credenciales válidas (archivo o ADC). "
+            "Configure GOOGLE_APPLICATION_CREDENTIALS o asegúrese de que el entorno tenga acceso IAM."
         )
 
     def _get_service(self):
@@ -137,7 +155,7 @@ class GoogleSheetsClient:
             return rows
 
         except HttpError as e:
-            print(f"Error leyendo Google Sheets: {e}")
+            logger.error(f"Error leyendo Google Sheets: {e}")
             return []
 
     async def append_row(
@@ -197,7 +215,7 @@ class GoogleSheetsClient:
             }
 
         except HttpError as e:
-            print(f"Error agregando fila a Google Sheets: {e}")
+            logger.error(f"Error agregando fila a Google Sheets: {e}")
             return {"success": False, "error": str(e)}
 
     async def update_row(
@@ -261,7 +279,7 @@ class GoogleSheetsClient:
             }
 
         except HttpError as e:
-            print(f"Error actualizando fila en Google Sheets: {e}")
+            logger.error(f"Error actualizando fila en Google Sheets: {e}")
             return {"success": False, "error": str(e)}
 
     async def delete_row(

@@ -117,7 +117,8 @@ class TelegramWebhookHandler:
             message_type: Tipo de mensaje original
         """
         client = await self._get_client()
-        url = f"https://api.telegram.org/bot{self.settings.telegram_bot_token}/sendMessage"
+        token = self.settings.telegram_bot_token.strip()
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
 
         payload = {
             "chat_id": chat_id,
@@ -143,7 +144,8 @@ class TelegramWebhookHandler:
             audio_url: URL del archivo de audio
         """
         client = await self._get_client()
-        url = f"https://api.telegram.org/bot{self.settings.telegram_bot_token}/sendAudio"
+        token = self.settings.telegram_bot_token.strip()
+        url = f"https://api.telegram.org/bot{token}/sendAudio"
 
         payload = {
             "chat_id": chat_id,
@@ -167,8 +169,9 @@ class TelegramWebhookHandler:
         """
         client = await self._get_client()
 
+        token = self.settings.telegram_bot_token.strip()
         # Obtener URL del archivo
-        get_file_url = f"https://api.telegram.org/bot{self.settings.telegram_bot_token}/getFile"
+        get_file_url = f"https://api.telegram.org/bot{token}/getFile"
         response = await client.get(get_file_url, params={"file_id": file_id})
         file_info = response.json()
 
@@ -176,7 +179,7 @@ class TelegramWebhookHandler:
             raise Exception(f"Error obteniendo info del archivo: {file_info}")
 
         file_path = file_info["result"]["file_path"]
-        download_url = f"https://api.telegram.org/file/bot{self.settings.telegram_bot_token}/{file_path}"
+        download_url = f"https://api.telegram.org/file/bot{token}/{file_path}"
 
         # Descargar archivo
         file_response = await client.get(download_url)

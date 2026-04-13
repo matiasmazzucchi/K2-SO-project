@@ -122,10 +122,12 @@ async def telegram_webhook(request: Request):
         return JSONResponse(content=result, status_code=200)
     
     except Exception as e:
-        logger.error(f"❌ Error procesando webhook: {e}", exc_info=True)
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"❌ Error procesando webhook: {e}\n{error_details}")
         return JSONResponse(
-            content={"status": "error", "error": str(e)},
-            status_code=500
+            content={"status": "error", "error": str(e), "traceback": error_details},
+            status_code=200
         )
 
 

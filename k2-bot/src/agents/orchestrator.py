@@ -2,10 +2,12 @@
 Orquestador principal del agente K2-SO.
 Coordina los sub-agentes y gestiona el flujo de conversación.
 """
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+import logging
+
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import HumanMessage, AIMessage
-from langchain_deepseek import ChatDeepSeek
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_openai import ChatOpenAI
 
 from ..config import get_settings, get_k2_system_prompt, AUTHORIZED_USER_NAMES
 from ..memory import FirestoreConversationMemory
@@ -14,29 +16,21 @@ from .calendar import CalendarAgent, create_calendar_tools
 from .nutrition import NutritionAgent, create_nutrition_tools
 from .email import EmailAgent, create_email_tools
 
+logger = logging.getLogger(__name__)
 
 class K2Orchestrator:
     """
     Orquestador principal del bot K2-SO.
-
-    Coordina los diferentes sub-agentes y gestiona
-    la memoria de conversación.
+    Usa OpenAI como cerebro principal para mayor estabilidad.
     """
 
     def __init__(self, project_id: str, user_id: int):
-        """
-        Inicializa el orquestador.
-
-        Args:
-            project_id: ID del proyecto de Google Cloud
-            user_id: ID de Telegram del usuario
-        """
         self.settings = get_settings()
         self.project_id = project_id
         self.user_id = user_id
         self.user_name = AUTHORIZED_USER_NAMES.get(user_id, "Usuario")
 
-        # Configurar LLM principal
+        # Configurar LLM principal (Cambiado a OpenAI para estabilidad)
         self.llm = self._configure_llm()
 
         # Inicializar sub-agentes
@@ -48,159 +42,50 @@ class K2Orchestrator:
         # Crear agente con herramientas
         self.agent_executor = self._create_agent_executor()
 
-    def _configure_llm(self) -> ChatDeepSeek:
-        """Configura el modelo de lenguaje principal."""
-        return ChatDeepSeek(
-            model="deepseek-chat",
+    def _configure_llm(self) -> ChatOpenAI:
+        """Configura el modelo de lenguaje principal (OpenAI)."""
+        api_key = self.settings.openai_api_key.strip()
+        return ChatOpenAI(
+            model="gpt-4o-mini",
             temperature=0.7,
-            api_key=self.settings.deepseek_api_key
+            api_key=api_key
         )
 
     def _create_agent_executor(self):
-        """
-        Crea el ejecutor del agente con todas las herramientas.
-
-        Returns:
-            Simple agent executor (versión simplificada)
-        """
-        # Recopilar todas las herramientas de los sub-agentes
+        """Crea el ejecutor del agente usando LangGraph."""
         tools = []
         tools.extend(create_financial_tools(self.financial_agent))
         tools.extend(create_calendar_tools(self.calendar_agent))
         tools.extend(create_nutrition_tools(self.nutrition_agent))
         tools.extend(create_email_tools(self.email_agent))
 
-        # Crear prompt del sistema
-        system_prompt = get_k2_system_prompt(self.user_name)
-
-        # Retornar un objeto con los datos necesarios
-        return {
-            "llm": self.llm,
-            "tools": tools,
-            "system_prompt": system_prompt
-        }
-
-    async def process_message(
-        self,
-        user_input: str,
-        context: Optional[Dict[str, Any]] = None
-    ) -> str:
-        """
-        Procesa un mensaje del usuario y devuelve la respuesta.
-
-        Args:
-            user_input: Texto o instrucción del usuario
-            context: Contexto adicional (imagen, audio transcrito, etc.)
-
-        Returns:
-            Respuesta del agente K2
-        """
-        context = context or {}
-
+        system_content = get_k2_system_prompt(self.user_name)
+        
         try:
-            # Respuesta simple por ahora
-            response = f"K2: He recibido tu mensaje: {user_input}. Funcionalidad en desarrollo."
-            return response
-
+            from langgraph.prebuilt import create_react_agent
+            agent = create_react_agent(self.llm, tools, prompt=system_content)
+            return agent
         except Exception as e:
-            print(f"Error en el agente: {e}")
-            return f"Hmm, parece que tengo un problema con mis circuitos. Error: {str(e)}"
-
-    def get_agent_status(self) -> Dict[str, Any]:
-        """
-        Retorna el estado de los sub-agentes.
-
-        Returns:
-            Diccionario con el estado de cada agente
-        """
-        return {
-            "financial": self.financial_agent.is_ready(),
-            "calendar": self.calendar_agent.is_ready(),
-            "nutrition": self.nutrition_agent.is_ready(),
-            "email": self.email_agent.is_ready()
-        }
-    """
-    Orquestador principal del bot K2-SO.
-
-    Coordina los diferentes sub-agentes y gestiona
-    la memoria de conversación.
-    """
-
-    def __init__(self, project_id: str, user_id: int):
-        """
-        Inicializa el orquestador.
-
-        Args:
-            project_id: ID del proyecto de Google Cloud
-            user_id: ID de Telegram del usuario
-        """
-        self.settings = get_settings()
-        self.project_id = project_id
-        self.user_id = user_id
-        self.user_name = AUTHORIZED_USER_NAMES.get(user_id, "Usuario")
-
-        # Configurar LLM principal
-        self.llm = self._configure_llm()
-
-        # Inicializar sub-agentes
-        self.financial_agent = FinancialAgent(project_id)
-        self.calendar_agent = CalendarAgent(project_id)
-        self.nutrition_agent = NutritionAgent()
-        self.email_agent = EmailAgent(project_id)
-
-        # Crear agente con herramientas
-        self.agent_executor = self._create_agent_executor()
-
-    def _configure_llm(self) -> ChatDeepSeek:
-        """Configura el modelo de lenguaje principal."""
-        return ChatDeepSeek(
-            model="deepseek-chat",
-            temperature=0.7,
-            api_key=self.settings.deepseek_api_key
-        )
-
-    def _create_agent_executor(self):
-        """
-        Crea el ejecutor del agente con todas las herramientas.
-
-        Returns:
-            Simple agent executor (versión simplificada)
-        """
-        # Recopilar todas las herramientas de los sub-agentes
-        tools = []
-        tools.extend(create_financial_tools(self.financial_agent))
-        tools.extend(create_calendar_tools(self.calendar_agent))
-        tools.extend(create_nutrition_tools(self.nutrition_agent))
-        tools.extend(create_email_tools(self.email_agent))
-
-        # Crear prompt del sistema
-        system_prompt = get_k2_system_prompt(self.user_name)
-
-        # Retornar un objeto con los datos necesarios
-        return {
-            "llm": self.llm,
-            "tools": tools,
-            "system_prompt": system_prompt
-        }
+            print(f"FAILED TO CREATE AGENT: {type(e).__name__} - {e}")
+            logger.error(f"Error creando agente (LangGraph): {e}")
+            raise e
 
     async def process_message(
         self,
         user_input: str,
+        chat_history: List[dict] = None,
         context: Optional[Dict[str, Any]] = None
     ) -> str:
-        """
-        Procesa un mensaje del usuario y devuelve la respuesta.
-
-        Args:
-            user_input: Texto o instrucción del usuario
-            context: Contexto adicional (imagen, audio transcrito, etc.)
-
-        Returns:
-            Respuesta del agente K2
-        """
         context = context or {}
+        chat_history = chat_history or []
 
-        # Preparar input para el agente
+        lc_history = []
+        for msg in chat_history:
+            if msg["role"] == "user":
+                lc_history.append(HumanMessage(content=msg["content"]))
+            elif msg["role"] == "assistant":
+                lc_history.append(AIMessage(content=msg["content"]))
+
         input_text = user_input
         if context.get("image_description"):
             input_text = f"[Imagen: {context['image_description']}]\n{user_input}"
@@ -208,25 +93,25 @@ class K2Orchestrator:
             input_text = f"[Audio transcrito: {context['transcribed_text']}]"
 
         try:
-            # Ejecutar agente
-            response = await self.agent_executor.ainvoke({
-                "input": input_text,
-                "chat_history": []  # Se maneja externamente
-            })
-
-            return response.get("output", "No pude procesar tu solicitud.")
-
+            if self.agent_executor:
+                # Usando langgraph
+                messages_to_send = lc_history + [HumanMessage(content=input_text)]
+                response = await self.agent_executor.ainvoke({"messages": messages_to_send})
+                
+                final_messages = response.get("messages", [])
+                if final_messages:
+                    return final_messages[-1].content
+                return "No pude procesar tu solicitud adecuadamente."
+            else:
+                # Modo fallback (sin herramientas)
+                messages = [SystemMessage(content=get_k2_system_prompt(self.user_name))] + lc_history + [HumanMessage(content=input_text)]
+                response = await self.llm.ainvoke(messages)
+                return response.content
         except Exception as e:
-            print(f"Error en el agente: {e}")
-            return f"Hmm, parece que tengo un problema con mis circuitos. Error: {str(e)}"
+            logger.error(f"Error en el agente K2: {e}")
+            return f"Lo siento, Matz. Tengo un problema de conexión con mis sistemas centrales. (Error: {str(e)})"
 
     def get_agent_status(self) -> Dict[str, Any]:
-        """
-        Retorna el estado de los sub-agentes.
-
-        Returns:
-            Diccionario con el estado de cada agente
-        """
         return {
             "financial": self.financial_agent.is_ready(),
             "calendar": self.calendar_agent.is_ready(),

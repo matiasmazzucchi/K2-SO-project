@@ -116,12 +116,12 @@ class FinancialAgent:
             "expense": row_data
         }
 
-    async def get_categories(self) -> List[str]:
+    async def get_categories(self) -> List[Dict[str, str]]:
         """
-        Obtiene las categorías de egresos disponibles.
+        Obtiene las categorías y motivos de egresos disponibles.
 
         Returns:
-            Lista de categorías
+            Lista de diccionarios con 'Motivo' y 'Categoria'
         """
         sheet_id = self.settings.sheets_ecosistema_mazzucchi
         sheet_gid = SHEET_NAMES["validacion_egresos"]
@@ -131,13 +131,15 @@ class FinancialAgent:
             sheet_gid=sheet_gid
         )
 
-        # Extraer categorías únicas
-        categories = set()
+        # Extraer mapa de motivos y categorías
+        mapping = []
         for row in rows:
-            if "categoria" in row:
-                categories.add(row["categoria"])
+            motivo = row.get("Motivo", "").strip()
+            categoria = row.get("Categoria", "").strip()
+            if motivo and categoria:
+                mapping.append({"motivo": motivo, "categoria": categoria})
 
-        return list(categories)
+        return mapping
 
     async def get_fixed_expenses(self) -> List[Dict[str, Any]]:
         """
@@ -266,11 +268,16 @@ def create_financial_tools(agent: FinancialAgent) -> List:
         """
         Registra un nuevo egreso en la hoja de cálculo.
         Úsalo cuando el usuario quiera agendar un gasto.
+        
+        CRÍTICO:
+        1. Para `motivo` DEBES elegir EXACTAMENTE uno de los motivos devueltos por `categorias_egresos`. NUNCA inventes descripciones como "Gasto registrado por el usuario".
+        2. Para `categoria` DEBES usar EXACTAMENTE la categoría que corresponde a ese motivo según `categorias_egresos`.
+        3. Si el usuario te da una descripción genérica, mapea esa descripción al `motivo` que mejor encaje de la lista oficial.
 
         Args:
-            categoria: Categoría del gasto
-            monto: Monto del gasto
-            motivo: Descripción del gasto
+            categoria: Categoría exacta correspondiente al motivo.
+            monto: Monto numérico del gasto.
+            motivo: El motivo exacto de la lista de motivos oficiales.
         """
         result = await agent.add_expense(categoria, monto, motivo)
         if result["success"]:
@@ -280,11 +287,17 @@ def create_financial_tools(agent: FinancialAgent) -> List:
     @tool
     async def categorias_egresos() -> str:
         """
-        Obtiene las categorías disponibles para egresos.
-        Úsalo para validar categorías antes de registrar.
+        Obtiene el listado oficial de Motivos y sus Categorías correspondientes.
+        Siempre llama a esta herramienta ANTES de registrar un nuevo egreso para saber qué `motivo` y `categoria` exactos debes usar.
         """
-        categories = await agent.get_categories()
-        return f"Categorías disponibles: {', '.join(categories)}"
+        mapping = await agent.get_categories()
+        if not mapping:
+            return "No se encontraron categorías de validación."
+            
+        result = "Listado de Motivos y Categorías permitidos:\n"
+        for item in mapping:
+            result += f"- Motivo: '{item['motivo']}' -> Categoría: '{item['categoria']}'\n"
+        return result
 
     @tool
     async def nuevo_ingreso(categoria: str, monto: float, motivo: str) -> str:

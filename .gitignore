@@ -69,3 +69,14 @@ Thumbs.db
 config/local_settings.py
 data/
 temp/
+k2-so-bot-key.json
+*.ps1
+scratch/
+*_logs.txt
+*.txt
+*.json
+!requirements.txt
+!package.json
+!composer.json
+!manifest.json
+
